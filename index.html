@@ -2633,32 +2633,75 @@ img[data-src]:not([src]) { opacity: 0; }
     var btn = document.querySelector('.vinyl[data-tune="' + index + '"]');
     if (btn) $("track").textContent = btn.getAttribute("data-title");
   }
-  function playSong(index, src) {
+  var songInflight = {};
+  var songWarm = [];
+  var songWarmOn = false;
+  function ensureAudio() {
     var Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) {
+    if (!Ctx) return null;
+    if (!audioCtx) audioCtx = new Ctx();
+    return audioCtx;
+  }
+  function loadSong(index, src, urgent) {
+    if (decoded[index]) return Promise.resolve(decoded[index]);
+    if (songInflight[index]) return songInflight[index];
+    var ctx = ensureAudio();
+    if (!ctx) return Promise.reject(new Error("no-audio"));
+    songInflight[index] = fetch(src, { priority: urgent ? "high" : "low" }).then(function (res) {
+      if (!res.ok) throw new Error("status");
+      return res.arrayBuffer();
+    }).then(function (buf) {
+      return new Promise(function (resolve, reject) {
+        ctx.decodeAudioData(buf, resolve, reject);
+      });
+    }).then(function (buffer) {
+      decoded[index] = buffer;
+      delete songInflight[index];
+      if (activeTune === index) startBuffer(index, buffer);
+      return buffer;
+    }).catch(function (err) {
+      delete songInflight[index];
+      if (activeTune === index) $("track").textContent = "диск встал, звук не открылся";
+      throw err;
+    });
+    return songInflight[index];
+  }
+  function warmNext() {
+    if (!songWarmOn) return;
+    var job = songWarm.shift();
+    if (!job) return;
+    if (decoded[job.index] || songInflight[job.index]) {
+      warmNext();
+      return;
+    }
+    loadSong(job.index, job.src, false).then(function () {
+      setTimeout(warmNext, 400);
+    }).catch(function () {
+      setTimeout(warmNext, 1200);
+    });
+  }
+  function warmSongs() {
+    document.querySelectorAll(".vinyl").forEach(function (btn) {
+      songWarm.push({
+        index: Number(btn.getAttribute("data-tune")),
+        src: btn.getAttribute("data-src")
+      });
+    });
+    songWarmOn = true;
+    warmNext();
+  }
+  function playSong(index, src) {
+    if (!ensureAudio()) {
       $("track").textContent = "диск встал, звука нет";
       return;
     }
-    if (!audioCtx) audioCtx = new Ctx();
     audioCtx.resume();
     if (decoded[index]) {
       startBuffer(index, decoded[index]);
       return;
     }
     $("track").textContent = "ставлю…";
-    fetch(src).then(function (res) {
-      if (!res.ok) throw new Error("status");
-      return res.arrayBuffer();
-    }).then(function (buf) {
-      audioCtx.decodeAudioData(buf, function (buffer) {
-        decoded[index] = buffer;
-        startBuffer(index, buffer);
-      }, function () {
-        if (activeTune === index) $("track").textContent = "диск встал, звук не открылся";
-      });
-    }).catch(function () {
-      if (activeTune === index) $("track").textContent = "диск встал, звук не открылся";
-    });
+    loadSong(index, src, true).catch(function () {});
   }
   function mountDisc(btn) {
     var index = Number(btn.getAttribute("data-tune"));
@@ -2685,6 +2728,7 @@ img[data-src]:not([src]) { opacity: 0; }
     btn.addEventListener("pointerdown", function (e) {
       if (btn.classList.contains("on-air")) return;
       e.preventDefault();
+      loadSong(Number(btn.getAttribute("data-tune")), btn.getAttribute("data-src"), true).catch(function () {});
       var startX = e.clientX;
       var startY = e.clientY;
       var moved = false;
@@ -2814,6 +2858,7 @@ img[data-src]:not([src]) { opacity: 0; }
   paintPips();
   startRibbonSway();
   setTimeout(function () { ahead(current); }, 600);
+  setTimeout(warmSongs, 2500);
   if ("serviceWorker" in navigator) {
     navigator.serviceWorker.register("sw.js").catch(function () {});
   }

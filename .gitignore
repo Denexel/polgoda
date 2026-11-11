@@ -1,3 +1,11 @@
 *
 !index.html
+!sw.js
+!.nojekyll
 !.gitignore
+!img/
+!img/**
+!audio/
+!audio/**
+!fonts/
+!fonts/**

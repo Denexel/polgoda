@@ -2592,17 +2592,17 @@ img[data-src]:not([src]) { opacity: 0; }
     $("ask-date").hidden = false;
   });
 
-  var audioCtx = null;
   var activeTune = -1;
-  var source = null;
-  var decoded = {};
   var heard = {};
-  function stopMusic() {
+  function stopMusic(keepSrc) {
     activeTune = -1;
-    if (source) {
-      try { source.stop(); } catch (e) {}
-      try { source.disconnect(); } catch (e2) {}
-      source = null;
+    if (musicEl) {
+      musicEl.pause();
+      if (!keepSrc) {
+        musicEl.removeAttribute("src");
+        musicEl.removeAttribute("data-tune");
+        try { musicEl.load(); } catch (e) {}
+      }
     }
     var arm = $("tonearm");
     var rec = $("record");
@@ -2618,94 +2618,70 @@ img[data-src]:not([src]) { opacity: 0; }
     if (track) track.textContent = "поставь на круг. сдвинь, чтобы снять";
     document.querySelectorAll(".vinyl.on-air").forEach(function (btn) { btn.classList.remove("on-air"); });
   }
-  function startBuffer(index, buffer) {
-    if (activeTune !== index || !audioCtx) return;
-    audioCtx.resume();
-    if (source) {
-      try { source.stop(); } catch (e) {}
-      source = null;
+  var musicEl = null;
+  var warmer = null;
+  var warmList = [];
+  var warmOn = false;
+  function player() {
+    if (!musicEl) {
+      musicEl = new Audio();
+      musicEl.loop = true;
+      musicEl.preload = "auto";
+      musicEl.setAttribute("playsinline", "");
     }
-    source = audioCtx.createBufferSource();
-    source.buffer = buffer;
-    source.loop = true;
-    source.connect(audioCtx.destination);
-    source.start();
-    var btn = document.querySelector('.vinyl[data-tune="' + index + '"]');
-    if (btn) $("track").textContent = btn.getAttribute("data-title");
+    return musicEl;
   }
-  var songInflight = {};
-  var songWarm = [];
-  var songWarmOn = false;
-  function ensureAudio() {
-    var Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return null;
-    if (!audioCtx) audioCtx = new Ctx();
-    return audioCtx;
+  function hushWarm() {
+    warmOn = false;
+    if (!warmer) return;
+    warmer.removeAttribute("src");
+    try { warmer.load(); } catch (e) {}
   }
-  function loadSong(index, src, urgent) {
-    if (decoded[index]) return Promise.resolve(decoded[index]);
-    if (songInflight[index]) return songInflight[index];
-    var ctx = ensureAudio();
-    if (!ctx) return Promise.reject(new Error("no-audio"));
-    songInflight[index] = fetch(src, { priority: urgent ? "high" : "low" }).then(function (res) {
-      if (!res.ok) throw new Error("status");
-      return res.arrayBuffer();
-    }).then(function (buf) {
-      return new Promise(function (resolve, reject) {
-        ctx.decodeAudioData(buf, resolve, reject);
-      });
-    }).then(function (buffer) {
-      decoded[index] = buffer;
-      delete songInflight[index];
-      if (activeTune === index) startBuffer(index, buffer);
-      return buffer;
-    }).catch(function (err) {
-      delete songInflight[index];
-      if (activeTune === index) $("track").textContent = "диск встал, звук не открылся";
-      throw err;
-    });
-    return songInflight[index];
+  function primeSong(index, src) {
+    hushWarm();
+    var el = player();
+    if (el.getAttribute("data-tune") === String(index)) return;
+    el.setAttribute("data-tune", String(index));
+    el.src = src;
   }
   function warmNext() {
-    if (!songWarmOn) return;
-    var job = songWarm.shift();
-    if (!job) return;
-    if (decoded[job.index] || songInflight[job.index]) {
-      warmNext();
-      return;
+    if (!warmOn) return;
+    var src = warmList.shift();
+    if (!src) return;
+    if (!warmer) {
+      warmer = new Audio();
+      warmer.preload = "auto";
     }
-    loadSong(job.index, job.src, false).then(function () {
-      setTimeout(warmNext, 400);
-    }).catch(function () {
-      setTimeout(warmNext, 1200);
-    });
+    function done() {
+      warmer.removeEventListener("canplay", done);
+      warmer.removeEventListener("error", done);
+      if (!warmOn) return;
+      setTimeout(warmNext, 250);
+    }
+    warmer.addEventListener("canplay", done);
+    warmer.addEventListener("error", done);
+    warmer.src = src;
   }
   function warmSongs() {
     document.querySelectorAll(".vinyl").forEach(function (btn) {
-      songWarm.push({
-        index: Number(btn.getAttribute("data-tune")),
-        src: btn.getAttribute("data-src")
-      });
+      warmList.push(btn.getAttribute("data-src"));
     });
-    songWarmOn = true;
+    warmOn = true;
     warmNext();
   }
   function playSong(index, src) {
-    if (!ensureAudio()) {
-      $("track").textContent = "диск встал, звука нет";
-      return;
+    primeSong(index, src);
+    var pending = player().play();
+    if (pending && pending.catch) {
+      pending.catch(function () {
+        if (activeTune === index) $("track").textContent = "диск встал, звук не открылся";
+      });
     }
-    audioCtx.resume();
-    if (decoded[index]) {
-      startBuffer(index, decoded[index]);
-      return;
-    }
-    $("track").textContent = "ставлю…";
-    loadSong(index, src, true).catch(function () {});
   }
   function mountDisc(btn) {
     var index = Number(btn.getAttribute("data-tune"));
-    stopMusic();
+    var primed = musicEl && musicEl.getAttribute("data-tune") === String(index);
+    stopMusic(primed);
     activeTune = index;
     var rec = $("record");
     rec.innerHTML = "";
@@ -2728,7 +2704,7 @@ img[data-src]:not([src]) { opacity: 0; }
     btn.addEventListener("pointerdown", function (e) {
       if (btn.classList.contains("on-air")) return;
       e.preventDefault();
-      loadSong(Number(btn.getAttribute("data-tune")), btn.getAttribute("data-src"), true).catch(function () {});
+      primeSong(Number(btn.getAttribute("data-tune")), btn.getAttribute("data-src"));
       var startX = e.clientX;
       var startY = e.clientY;
       var moved = false;

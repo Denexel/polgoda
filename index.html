@@ -2619,6 +2619,7 @@ img[data-src]:not([src]) { opacity: 0; }
     document.querySelectorAll(".vinyl.on-air").forEach(function (btn) { btn.classList.remove("on-air"); });
   }
   var musicEl = null;
+  var stashEl = null;
   var warmer = null;
   var warmList = [];
   var warmOn = false;
@@ -2643,6 +2644,29 @@ img[data-src]:not([src]) { opacity: 0; }
     if (el.getAttribute("data-tune") === String(index)) return;
     el.setAttribute("data-tune", String(index));
     el.src = src;
+  }
+  function bufferHeld(index, src) {
+    if (activeTune === index) return;
+    if (activeTune !== -1) {
+      if (!stashEl) {
+        stashEl = new Audio();
+        stashEl.preload = "auto";
+        stashEl.setAttribute("playsinline", "");
+      }
+      if (stashEl.getAttribute("data-tune") !== String(index)) {
+        stashEl.setAttribute("data-tune", String(index));
+        stashEl.src = src;
+      }
+      return;
+    }
+    primeSong(index, src);
+  }
+  function dropStash() {
+    if (!stashEl) return;
+    stashEl.pause();
+    stashEl.removeAttribute("src");
+    stashEl.removeAttribute("data-tune");
+    try { stashEl.load(); } catch (e) {}
   }
   function warmNext() {
     if (!warmOn) return;
@@ -2670,6 +2694,17 @@ img[data-src]:not([src]) { opacity: 0; }
     warmNext();
   }
   function playSong(index, src) {
+    if (stashEl && stashEl.getAttribute("data-tune") === String(index)) {
+      if (musicEl && musicEl !== stashEl) {
+        musicEl.pause();
+        musicEl.removeAttribute("src");
+        musicEl.removeAttribute("data-tune");
+        try { musicEl.load(); } catch (e) {}
+      }
+      musicEl = stashEl;
+      musicEl.loop = true;
+      stashEl = null;
+    }
     primeSong(index, src);
     var pending = player().play();
     if (pending && pending.catch) {
@@ -2704,7 +2739,7 @@ img[data-src]:not([src]) { opacity: 0; }
     btn.addEventListener("pointerdown", function (e) {
       if (btn.classList.contains("on-air")) return;
       e.preventDefault();
-      primeSong(Number(btn.getAttribute("data-tune")), btn.getAttribute("data-src"));
+      bufferHeld(Number(btn.getAttribute("data-tune")), btn.getAttribute("data-src"));
       var startX = e.clientX;
       var startY = e.clientY;
       var moved = false;
@@ -2725,7 +2760,10 @@ img[data-src]:not([src]) { opacity: 0; }
         btn.classList.remove("dragging");
         btn.style.transform = "";
         if (onPlate) mountDisc(btn);
-        else if (moved) toast("на круг");
+        else {
+          dropStash();
+          if (moved) toast("на круг");
+        }
       }
       document.addEventListener("pointermove", move);
       document.addEventListener("pointerup", up);

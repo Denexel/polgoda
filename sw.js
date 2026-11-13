@@ -1,4 +1,4 @@
-var CACHE = "polgoda-3";
+var CACHE = "polgoda-4";
 
 self.addEventListener("install", function (event) {
   event.waitUntil(self.skipWaiting());
@@ -30,7 +30,7 @@ self.addEventListener("fetch", function (event) {
   if (request.method !== "GET") return;
   var url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
-  if (/\.(mp3|m4a|aac)$/i.test(url.pathname)) return;
+  if (/\.(mp3|m4a|aac|mp4|webm)$/i.test(url.pathname)) return;
   var shell = url.pathname.endsWith("/") || url.pathname.endsWith("/index.html") || url.pathname.endsWith("/sw.js");
   event.respondWith(caches.open(CACHE).then(function (cache) {
     if (shell) {

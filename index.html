@@ -1485,8 +1485,99 @@ img[data-src]:not([src]) { opacity: 0; }
 .vinyl.on-air { transform: translateY(2px); }
 .vinyl.on-air .discface { box-shadow: 0 0 0 2px var(--berry), 0 8px 16px rgba(40,20,16,.22); }
 @keyframes spin { to { transform: rotate(360deg); } }
+.mouse-egg {
+  position: absolute;
+  z-index: 8;
+  left: 10px;
+  bottom: calc(8px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 118px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  animation: mouseRun 6.4s ease-in-out infinite;
+  touch-action: manipulation;
+}
+.mouse-say {
+  padding: 2px 8px 3px;
+  border-radius: 12px;
+  background: #fffaf4;
+  color: var(--wine);
+  font-family: var(--hand);
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 6px 14px rgba(0,0,0,.28);
+}
+.mouse-say::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: -2px auto -6px;
+  background: #fffaf4;
+  transform: rotate(45deg);
+}
+.mouse-sprite {
+  width: 78px;
+  height: 52px;
+  margin-top: 4px;
+  transform-origin: 50% 70%;
+  animation: mouseFace 6.4s ease-in-out infinite;
+}
+@keyframes mouseRun {
+  0%, 8% { transform: translateX(0); }
+  42%, 58% { transform: translateX(min(250px, calc(100vw - 148px))); }
+  92%, 100% { transform: translateX(0); }
+}
+@keyframes mouseFace {
+  0%, 46% { transform: scaleX(1); }
+  54%, 100% { transform: scaleX(-1); }
+}
+.film {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: grid;
+  place-items: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  background: rgba(20, 8, 10, .82);
+  touch-action: manipulation;
+}
+.film[hidden] { display: none; }
+.film-card {
+  width: min(100%, 420px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.film-card video {
+  width: 100%;
+  max-height: calc(100dvh - 110px);
+  border-radius: 18px;
+  background: #14080a;
+  box-shadow: 0 18px 40px rgba(0,0,0,.45);
+}
+.film-wait, .film-fail {
+  margin: 0;
+  text-align: center;
+  color: #fff6ea;
+  font-family: var(--hand);
+  font-size: 28px;
+}
+.film-close {
+  min-height: 46px;
+  border: 0;
+  border-radius: 999px;
+  background: #fffaf4;
+  color: var(--wine);
+  font-family: var(--hand);
+  font-size: 28px;
+}
 @media (prefers-reduced-motion: reduce) {
-  .page.on, .ask, .notetab.peek, .float-heart, .fx, .ribbon, .ribbon::before, .ribbon::after, .ribbon-sheen, .bow, .petal, .cloth, .foil, .clip-hit, .record, .hotspot, #power.paper, .me, #duel.r1 .me, #duel.r2 .me, #duel.r3 .me, .door.shake { animation: none; }
+  .page.on, .ask, .notetab.peek, .float-heart, .fx, .ribbon, .ribbon::before, .ribbon::after, .ribbon-sheen, .bow, .petal, .cloth, .foil, .clip-hit, .record, .hotspot, #power.paper, .me, #duel.r1 .me, #duel.r2 .me, #duel.r3 .me, .door.shake, .mouse-egg, .mouse-sprite { animation: none; }
 }
 </style>
 </head>
@@ -1965,12 +2056,33 @@ img[data-src]:not([src]) { opacity: 0; }
         </div>
         <button class="again" id="again" type="button">ещё раз</button>
       </div>
+      <button class="mouse-egg" id="mouse-egg" type="button" aria-label="нажми на меня">
+        <span class="mouse-say">нажми на меня</span>
+        <svg class="mouse-sprite" viewBox="0 0 96 64" aria-hidden="true">
+          <path d="M40 42c-18 1-28 12-34 18" fill="none" stroke="#b08974" stroke-width="3" stroke-linecap="round"/>
+          <ellipse cx="58" cy="40" rx="24" ry="15" fill="#e7d3c2"/>
+          <ellipse cx="78" cy="36" rx="13" ry="11" fill="#f3e2d4"/>
+          <ellipse cx="84" cy="20" rx="6" ry="8" fill="#f3b7c0"/>
+          <ellipse cx="72" cy="18" rx="5" ry="7" fill="#f3b7c0"/>
+          <circle cx="84" cy="35" r="1.7" fill="#3a241c"/>
+          <ellipse cx="48" cy="52" rx="5" ry="3" fill="#c9a892"/>
+          <ellipse cx="66" cy="53" rx="5" ry="3" fill="#c9a892"/>
+        </svg>
+      </button>
     </section>
 
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
 <div id="fxlayer"></div>
+<div class="film" id="film" hidden>
+  <div class="film-card" role="dialog" aria-modal="true" aria-label="наш мультик">
+    <p class="film-wait" id="film-wait" hidden>секунду</p>
+    <p class="film-fail" id="film-fail" hidden>не открылось. проверь сеть и нажми ещё раз</p>
+    <video id="film-video" controls playsinline webkit-playsinline preload="none"></video>
+    <button class="film-close" id="film-close" type="button">закрыть</button>
+  </div>
+</div>
 <script>
 (function () {
   var order = ["cover", "counter", "sochi", "faces", "kiss", "bouquet", "leaves", "dodge", "night", "curls", "home", "socks", "power", "duel", "rat", "door", "heart", "player", "sunset", "letter"];
@@ -2006,6 +2118,8 @@ img[data-src]:not([src]) { opacity: 0; }
     }
     if (id === "rat") startRat();
     else stopRat();
+    if (id === "sunset" || id === "letter") armFilm();
+    if (id !== "letter") closeFilm();
     if (id === "cover") startRibbonSway();
     else stopRibbonSway();
     wake($(id));
@@ -2802,6 +2916,44 @@ img[data-src]:not([src]) { opacity: 0; }
     document.addEventListener("pointerup", up);
   });
 
+  var filmArmed = false;
+  function armFilm() {
+    var video = $("film-video");
+    if (filmArmed || !video) return;
+    filmArmed = true;
+    video.preload = "metadata";
+    video.src = "video/us.mp4";
+    video.load();
+  }
+  function closeFilm() {
+    var film = $("film");
+    var video = $("film-video");
+    if (!film || film.hidden) return;
+    film.hidden = true;
+    if (video) video.pause();
+  }
+  function openFilm() {
+    var film = $("film");
+    var video = $("film-video");
+    var wait = $("film-wait");
+    var fail = $("film-fail");
+    armFilm();
+    fail.hidden = true;
+    wait.hidden = video.readyState >= 3;
+    film.hidden = false;
+    var play = video.play();
+    if (play && play.catch) play.catch(function () { wait.hidden = true; });
+  }
+  $("film-video").addEventListener("playing", function () { $("film-wait").hidden = true; });
+  $("film-video").addEventListener("error", function () {
+    $("film-wait").hidden = true;
+    $("film-fail").hidden = false;
+  });
+  $("mouse-egg").addEventListener("click", openFilm);
+  $("film-close").addEventListener("click", closeFilm);
+  $("film").addEventListener("click", function (e) {
+    if (e.target === $("film")) closeFilm();
+  });
   $("again").addEventListener("click", function () {
     stopMusic();
     heard = {};
